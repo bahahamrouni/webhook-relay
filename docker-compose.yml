@@ -1,0 +1,35 @@
+# Two processes share one SQLite file on a named volume (single host only).
+x-relay-env: &relay-env
+  RELAY_DB_PATH: /data/relay.db
+  RELAY_ALLOW_PRIVATE_TARGETS: ${RELAY_ALLOW_PRIVATE_TARGETS:-0}
+
+services:
+  api:
+    build: .
+    environment:
+      <<: *relay-env
+      RELAY_API_KEY: ${RELAY_API_KEY:?Set RELAY_API_KEY (16+ characters) in .env}
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:8000:8000"
+    volumes:
+      - relay-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  worker:
+    build: .
+    command: ["python", "-m", "webhook_relay.cli", "worker"]
+    environment:
+      <<: *relay-env
+    volumes:
+      - relay-data:/data
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  relay-data:
